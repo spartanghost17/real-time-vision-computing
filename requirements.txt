@@ -1,0 +1,28 @@
+     # ══════════════════════════════════════════════════════════════
+#  SENTINEL — All Dependencies (local dev, no Docker)
+#  pip install -r requirements.txt
+#
+#  For Docker, each service uses its own file:
+#    requirements-cv.txt     → CV microservice container
+#    requirements-api.txt    → API gateway container
+#    requirements-spark.txt  → Spark job (or use bitnami image)
+# ══════════════════════════════════════════════════════════════
+
+# ── CV Microservice ──────────────────────────────────────────
+ultralytics>=8.1.0              # YOLOv8 object detection
+opencv-python-headless>=4.9.0   # Frame capture + decode (no GUI)
+numpy>=1.24.0                   # Array ops
+scipy>=1.11.0                   # Hungarian algorithm (tracker)
+
+# ── Kafka (shared by CV + API) ───────────────────────────────
+confluent-kafka>=2.3.0          # Producer (CV) + Consumer (API)
+
+# ── NYC DOT + Weather (shared by CV + Spark) ─────────────────
+requests>=2.31.0                # HTTP polling + Open-Meteo API
+
+# ── API Gateway ──────────────────────────────────────────────
+fastapi>=0.110.0                # REST + WebSocket server
+uvicorn[standard]>=0.27.0       # ASGI server (websockets + httptools)
+
+# ── Spark (only if running locally, not via bitnami image) ───
+pyspark>=3.5.0                  # Structured Streaming engine

@@ -1,0 +1,18 @@
+# ══════════════════════════════════════════════════════════════
+#  SENTINEL — CV Microservice
+#  pip install -r requirements-cv.txt
+# ══════════════════════════════════════════════════════════════
+
+# Detection
+ultralytics>=8.1.0              # YOLOv8 object detection + NMS
+opencv-python-headless>=4.9.0   # Frame decode, drawing, VideoCapture (no GUI deps)
+numpy>=1.24.0                   # Array ops for frames + bbox math
+
+# Tracking (Hungarian algorithm for ByteTrack association)
+scipy>=1.11.0
+
+# Kafka producer
+confluent-kafka>=2.3.0
+
+# NYC DOT camera JPEG polling
+requests>=2.31.0

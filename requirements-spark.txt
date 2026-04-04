@@ -1,0 +1,15 @@
+# ══════════════════════════════════════════════════════════════
+#  SENTINEL — Spark Structured Streaming Job
+#  pip install -r requirements-spark.txt
+#
+#  Note: PySpark itself is included in the bitnami/spark Docker
+#  image. Only install this if running Spark locally.
+#  The Kafka connector is loaded at runtime via --packages:
+#    spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+# ══════════════════════════════════════════════════════════════
+
+# Spark engine
+pyspark>=3.5.0
+
+# Weather correlation (foreachBatch calls Open-Meteo REST API)
+requests>=2.31.0

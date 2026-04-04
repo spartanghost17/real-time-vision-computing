@@ -1,0 +1,13 @@
+# ══════════════════════════════════════════════════════════════
+#  SENTINEL — API Gateway (FastAPI + WebSocket)
+#  pip install -r requirements-api.txt
+# ══════════════════════════════════════════════════════════════
+
+# Web framework
+fastapi>=0.110.0
+
+# ASGI server (with WebSocket support via websockets + httptools)
+uvicorn[standard]>=0.27.0
+
+# Kafka consumer (bridges Kafka topics → WebSocket clients)
+confluent-kafka>=2.3.0
