@@ -1,0 +1,174 @@
+# ╔═══════════════════════════════════════════════════════════════╗
+# ║  SENTINEL — CV + Spark Pipeline | NYC DOT Cameras             ║
+# ║  Kafka (KRaft) + Spark + CV Service + API                     ║
+# ╚═══════════════════════════════════════════════════════════════╝
+#
+# Quick start:
+#   docker compose up -d kafka && docker compose up kafka-init
+#   docker compose up cv-service     # Single camera
+#   docker compose up cv-all         # All 6 NYC cameras
+#   docker compose up spark-job      # Streaming analytics
+#   docker compose up api            # WebSocket gateway
+
+services:
+
+  # ── Kafka (KRaft mode — NO ZooKeeper) ────────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: sentinel-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 24
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── Kafka Topic Setup ───────────────────────────────────────
+  kafka-init:
+    image: apache/kafka:3.7.0
+    container_name: sentinel-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      echo '══════════════════════════════════════════'
+      echo '  SENTINEL — Creating Kafka Topics'
+      echo '══════════════════════════════════════════'
+      kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic sentinel.cv.detections --partitions 3 --replication-factor 1
+      kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic sentinel.cv.alerts --partitions 1 --replication-factor 1
+      kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic sentinel.cv.counts --partitions 1 --replication-factor 1
+      kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic sentinel.cv.analytics --partitions 3 --replication-factor 1
+      echo 'Topics created:'
+      kafka-topics.sh --bootstrap-server kafka:9092 --list
+      "
+
+  # ── CV Microservice (single NYC camera) ─────────────────────
+  cv-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.cv
+    container_name: sentinel-cv
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      CAMERA_ID: ${CAMERA_ID:-cam_nyc_042}
+      YOLO_MODEL: yolov8n.pt
+    command: >
+      python -m cv_service.pipeline
+        --mode nycdot
+        --camera ${CAMERA_ID:-cam_nyc_042}
+        --kafka kafka:9092
+
+  # ── CV Microservice (ALL 6 NYC cameras concurrently) ────────
+  cv-all:
+    build:
+      context: .
+      dockerfile: Dockerfile.cv
+    container_name: sentinel-cv-all
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      YOLO_MODEL: yolov8n.pt
+    command: >
+      python -m cv_service.pipeline
+        --mode nycdot
+        --camera all
+        --kafka kafka:9092
+
+  # ── CV Microservice (local video file for demos) ────────────
+  cv-video:
+    build:
+      context: .
+      dockerfile: Dockerfile.cv
+    container_name: sentinel-cv-video
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    volumes:
+      - ./demo:/app/demo
+    command: >
+      python -m cv_service.pipeline
+        --mode video
+        --source /app/demo/traffic_sample.mp4
+        --kafka kafka:9092
+
+  # ── Apache Spark (Structured Streaming) ─────────────────────
+  spark-job:
+    image: spark:python3
+    container_name: sentinel-spark
+    user: root
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SPARK_CHECKPOINT: /tmp/sentinel-checkpoints
+    volumes:
+      - ./spark_jobs:/opt/spark-jobs
+      - spark-checkpoints:/tmp/sentinel-checkpoints
+    command: >
+      bash -c "pip install -q requests &&
+      /opt/spark/bin/spark-submit
+        --master local[2]
+        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4
+        /opt/spark-jobs/traffic_streaming.py"
+
+  # ── API Gateway (FastAPI + WebSocket) ───────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: sentinel-api
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    command: uvicorn api.server:app --host 0.0.0.0 --port 8000
+
+  # ── Frontend (React + Vite, served by Nginx) ─────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sentinel-frontend
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  kafka-data:
+  spark-checkpoints:
