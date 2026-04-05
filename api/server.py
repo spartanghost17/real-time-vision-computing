@@ -21,10 +21,13 @@ from typing import Dict, Set
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+
 from confluent_kafka import Consumer, KafkaError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sentinel.api")
+
 
 # ── Kafka consumer config ────────────────────────────────────────
 KAFKA_BOOTSTRAP = "localhost:9092"
@@ -34,6 +37,7 @@ TOPICS = {
     "analytics": "sentinel.cv.analytics",
     "counts": "sentinel.cv.counts",
 }
+
 
 # ── WebSocket connection manager ─────────────────────────────────
 class ConnectionManager:
@@ -77,6 +81,7 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
 
 # ── Kafka consumer background tasks ──────────────────────────────
 async def kafka_to_websocket():
@@ -125,6 +130,7 @@ async def kafka_to_websocket():
     finally:
         consumer.close()
 
+
 # ── App lifecycle ────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -134,6 +140,7 @@ async def lifespan(app: FastAPI):
     yield
     task.cancel()
     logger.info("SENTINEL API server stopped")
+
 
 # ── FastAPI app ──────────────────────────────────────────────────
 app = FastAPI(
