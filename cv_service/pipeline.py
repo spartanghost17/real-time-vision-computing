@@ -3,12 +3,12 @@ SENTINEL — CV Pipeline Main
 Orchestrates video ingestion → detection → tracking → Kafka emission.
 
 Supports two ingestion modes:
-  1. NYC DOT polling (default) — JPEG snapshots from webcams.nyctmc.org
+  1. TfL London polling (default) — JPEG snapshots from TfL JamCam API
   2. Local video file — for offline demo/testing
 
 Usage:
-    python -m cv_service.pipeline --mode nycdot --camera cam_nyc_042
-    python -m cv_service.pipeline --mode nycdot --camera all
+    python -m cv_service.pipeline --mode tfl --camera cam_ldn_piccadilly
+    python -m cv_service.pipeline --mode tfl --camera all
     python -m cv_service.pipeline --mode video --source ./demo/traffic.mp4
 """
 
@@ -21,7 +21,7 @@ import numpy as np
 from .detector import SentinelDetector
 from .tracker import SentinelTracker
 from .producer import SentinelProducer
-from .ingest_nycdot import NYCDOTPoller, NYC_CAMERAS, CameraConfig
+from .ingest_tfl import TfLPoller, LONDON_CAMERAS, CameraConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,7 +48,7 @@ class SentinelCVPipeline:
             camera_id=camera_config.camera_id,
             camera_lat=camera_config.lat, camera_lon=camera_config.lon,
         )
-        self.poller = NYCDOTPoller(camera_config, poll_interval=poll_interval)
+        self.poller = TfLPoller(camera_config, poll_interval=poll_interval)
         self._alerted_stopped = set()
         self._alerted_speeding = set()
         self._counting_lines_configured = False
@@ -96,7 +96,7 @@ class SentinelCVPipeline:
         self.running = True
         frame_count = 0
         t_start = time.perf_counter()
-        logger.info(f"Starting NYC DOT pipeline: {self.camera.camera_id}")
+        logger.info(f"Starting TfL London pipeline: {self.camera.camera_id}")
 
         try:
             while self.running and self.poller.is_healthy:
@@ -209,30 +209,30 @@ def run_multi_camera(cameras, kafka, model, conf):
 
 def main():
     parser = argparse.ArgumentParser(description="SENTINEL CV Pipeline")
-    parser.add_argument("--mode", choices=["nycdot","video"], default="nycdot")
-    parser.add_argument("--camera", default=os.getenv("CAMERA_ID", "cam_nyc_042"))
+    parser.add_argument("--mode", choices=["tfl","video"], default="tfl")
+    parser.add_argument("--camera", default=os.getenv("CAMERA_ID", "cam_ldn_piccadilly"))
     parser.add_argument("--source", default="0")
     parser.add_argument("--kafka", default=os.getenv("KAFKA_BOOTSTRAP", "localhost:9092"))
     parser.add_argument("--model", default=os.getenv("YOLO_MODEL", "yolov8n.pt"))
     parser.add_argument("--confidence", type=float, default=0.35)
     parser.add_argument("--preview", action="store_true")
-    parser.add_argument("--poll-interval", type=float, default=1.0)
+    parser.add_argument("--poll-interval", type=float, default=10.0)
     args = parser.parse_args()
 
-    if args.mode == "nycdot":
+    if args.mode == "tfl":
         if args.camera == "all":
-            run_multi_camera(NYC_CAMERAS, args.kafka, args.model, args.confidence)
+            run_multi_camera(LONDON_CAMERAS, args.kafka, args.model, args.confidence)
         else:
-            cam = next((c for c in NYC_CAMERAS if c.camera_id == args.camera), None)
+            cam = next((c for c in LONDON_CAMERAS if c.camera_id == args.camera), None)
             if not cam:
-                logger.error(f"Unknown camera. Available: {', '.join(c.camera_id for c in NYC_CAMERAS)}")
+                logger.error(f"Unknown camera. Available: {', '.join(c.camera_id for c in LONDON_CAMERAS)}")
                 sys.exit(1)
             SentinelCVPipeline(cam, args.kafka, args.model, args.confidence,
                               args.preview, args.poll_interval).run()
     else:
         cam = CameraConfig(os.getenv("CAMERA_ID","cam_local"), "", "Local Video",
-                          float(os.getenv("CAMERA_LAT","40.7128")),
-                          float(os.getenv("CAMERA_LON","-74.0060")))
+                          float(os.getenv("CAMERA_LAT","51.5074")),
+                          float(os.getenv("CAMERA_LON","-0.1278")))
         SentinelCVPipeline(cam, args.kafka, args.model, args.confidence, args.preview).run_video(args.source)
 
 if __name__ == "__main__":

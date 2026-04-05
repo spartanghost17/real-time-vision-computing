@@ -1,12 +1,12 @@
 # ╔═══════════════════════════════════════════════════════════════╗
-# ║  SENTINEL — CV + Spark Pipeline | NYC DOT Cameras             ║
+# ║  SENTINEL — CV + Spark Pipeline | TfL London Cameras          ║
 # ║  Kafka (KRaft) + Spark + CV Service + API                     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 #
 # Quick start:
 #   docker compose up -d kafka && docker compose up kafka-init
-#   docker compose up cv-service     # Single camera
-#   docker compose up cv-all         # All 6 NYC cameras
+#   docker compose up cv-service     # Single camera (Piccadilly Circus)
+#   docker compose up cv-all         # All 6 London cameras
 #   docker compose up spark-job      # Streaming analytics
 #   docker compose up api            # WebSocket gateway
 
@@ -66,7 +66,7 @@ services:
       kafka-topics.sh --bootstrap-server kafka:9092 --list
       "
 
-  # ── CV Microservice (single NYC camera) ─────────────────────
+  # ── CV Microservice (single London camera) ─────────────────────
   cv-service:
     build:
       context: .
@@ -77,15 +77,15 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      CAMERA_ID: ${CAMERA_ID:-cam_nyc_042}
+      CAMERA_ID: ${CAMERA_ID:-cam_ldn_piccadilly}
       YOLO_MODEL: yolov8n.pt
     command: >
       python -m cv_service.pipeline
-        --mode nycdot
-        --camera ${CAMERA_ID:-cam_nyc_042}
+        --mode tfl
+        --camera ${CAMERA_ID:-cam_ldn_piccadilly}
         --kafka kafka:9092
 
-  # ── CV Microservice (ALL 6 NYC cameras concurrently) ────────
+  # ── CV Microservice (ALL 6 London cameras concurrently) ────────
   cv-all:
     build:
       context: .
@@ -99,7 +99,7 @@ services:
       YOLO_MODEL: yolov8n.pt
     command: >
       python -m cv_service.pipeline
-        --mode nycdot
+        --mode tfl
         --camera all
         --kafka kafka:9092
 
@@ -124,7 +124,7 @@ services:
 
   # ── Apache Spark (Structured Streaming) ─────────────────────
   spark-job:
-    image: spark:python3
+    image: apache/spark:3.5.4-python3
     container_name: sentinel-spark
     user: root
     depends_on:
@@ -136,12 +136,7 @@ services:
     volumes:
       - ./spark_jobs:/opt/spark-jobs
       - spark-checkpoints:/tmp/sentinel-checkpoints
-    command: >
-      bash -c "pip install -q requests &&
-      /opt/spark/bin/spark-submit
-        --master local[2]
-        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4
-        /opt/spark-jobs/traffic_streaming.py"
+    command: ["bash", "-c", "pip install -q requests && sed -i 's/\\r$//' /opt/spark-jobs/traffic_streaming.py && /opt/spark/bin/spark-submit --master local[2] --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 /opt/spark-jobs/traffic_streaming.py"]
 
   # ── API Gateway (FastAPI + WebSocket) ───────────────────────
   api:
